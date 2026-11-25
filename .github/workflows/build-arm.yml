@@ -75,8 +75,26 @@ jobs:
           gradle-version: '8.6'
       - name: Compile Xclipse Gaming
         run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - name: Validate APK and prepare standalone download
+        shell: bash
+        run: |
+          set -euxo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          TOOLS="$ANDROID_HOME/build-tools/34.0.0"
+          unzip -tq "$APK"
+          "$TOOLS/zipalign" -c -v 4 "$APK"
+          "$TOOLS/apksigner" verify --verbose --print-certs "$APK"
+          "$TOOLS/aapt" dump badging "$APK" | tee apk-info.txt
+          grep -q "native-code:.*arm64-v8a" apk-info.txt
+          grep -q "package: name='com.winlator'" apk-info.txt
+          mkdir -p dist
+          cp "$APK" dist/Xclipse-Gaming.apk
+          (cd dist && sha256sum Xclipse-Gaming.apk > Xclipse-Gaming.apk.sha256)
       - uses: actions/upload-artifact@v4
         with:
           name: Xclipse-Gaming-APK
-          path: app/build/outputs/apk/debug/*.apk
+          path: |
+            dist/Xclipse-Gaming.apk
+            dist/Xclipse-Gaming.apk.sha256
+            apk-info.txt
           if-no-files-found: error
