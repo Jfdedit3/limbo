@@ -13,7 +13,7 @@ public class LimboEmuActivity extends LimboActivity {
     public void onCreate(Bundle bundle){
         LimboApplication.arch = Config.Arch.arm64;
         Config.clientClass = this.getClass();
-        Config.enableKVM = true;
+        Config.enableKVM = false;
         Config.enableEmulatedFloppy = false;
         Config.enableEmulatedSDCard = true;
         //XXX; only for 64bit hosts, also make sure you have qemu 2.9.1 arm-softmmu and above compiled
