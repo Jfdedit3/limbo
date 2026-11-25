@@ -30,8 +30,29 @@ jobs:
           curl -fL --retry 3 https://raw.githubusercontent.com/qemu/qemu/v5.1.0/pc-bios/edk2-aarch64-code.fd.bz2 -o /tmp/edk2.fd.bz2
           bzip2 -dc /tmp/edk2.fd.bz2 > limbo-android-arm/src/main/assets/roms/edk2-aarch64-code.fd
           curl -fL --retry 3 https://raw.githubusercontent.com/qemu/qemu/v5.1.0/pc-bios/edk2-licenses.txt -o limbo-android-arm/src/main/assets/roms/edk2-licenses.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - name: Install Android SDK packages
-        run: sdkmanager "platforms;android-29" "build-tools;29.0.3"
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$RUNNER_TEMP/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fL --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/android-tools.zip
+          unzip -q /tmp/android-tools.zip -d "$SDK/cmdline-tools"
+          mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+          MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          (yes || true) | "$MANAGER" --sdk_root="$SDK" --licenses
+          "$MANAGER" --sdk_root="$SDK" "platforms;android-29" "build-tools;29.0.3" "platform-tools"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          printf 'sdk.dir=%s\n' "$SDK" > local.properties
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
       - name: Build debug APK
         run: gradle :limbo-android-arm:assembleDebug --no-daemon --stacktrace
       - name: Upload APK
