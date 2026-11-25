@@ -49,7 +49,7 @@ public class FileInstaller {
         Log.d(TAG, "Installing files");
         File tmpDir = new File(LimboApplication.getBasefileDir());
         if (!tmpDir.exists()) {
-            if(tmpDir.mkdirs()) {
+            if(!tmpDir.mkdirs() && !tmpDir.isDirectory()) {
                 ToastUtils.toastShort(activity, activity.getString(R.string.CouldNotCreateBaseDir) + ": " + tmpDir.getPath());
                 return;
             }
