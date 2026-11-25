@@ -1,0 +1,42 @@
+name: Build Limbo ARM Fixed
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '6.5.1'
+      - name: Restore matching upstream QEMU libraries and ROM assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 3 https://github.com/limboemu/limbo/releases/download/v6.0.1-LimboEmulator/limbo-android-arm-6.0.1-qemu-5.1.0.apk -o /tmp/limbo.apk
+          unzip -q /tmp/limbo.apk 'lib/arm64-v8a/*' 'assets/roms/*' -d /tmp/limbo-upstream
+          mkdir -p limbo-android-arm/src/main/jniLibs limbo-android-arm/src/main/assets/roms
+          cp -a /tmp/limbo-upstream/lib/arm64-v8a limbo-android-arm/src/main/jniLibs/
+          cp -a /tmp/limbo-upstream/assets/roms/. limbo-android-arm/src/main/assets/roms/
+          test -s limbo-android-arm/src/main/jniLibs/arm64-v8a/libqemu-system-aarch64.so
+          curl -fL --retry 3 https://raw.githubusercontent.com/qemu/qemu/v5.1.0/pc-bios/edk2-aarch64-code.fd.bz2 -o /tmp/edk2.fd.bz2
+          bzip2 -dc /tmp/edk2.fd.bz2 > limbo-android-arm/src/main/assets/roms/edk2-aarch64-code.fd
+          curl -fL --retry 3 https://raw.githubusercontent.com/qemu/qemu/v5.1.0/pc-bios/edk2-licenses.txt -o limbo-android-arm/src/main/assets/roms/edk2-licenses.txt
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-29" "build-tools;29.0.3"
+      - name: Build debug APK
+        run: gradle :limbo-android-arm:assembleDebug --no-daemon --stacktrace
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Limbo-ARM-Fixed
+          path: limbo-android-arm/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
