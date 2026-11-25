@@ -410,7 +410,10 @@ private String getQemuLibrary() {
         // XXX: we add the acceleration options after the extra params
         // this is due to QEMU applying the first instance of this option
         // so the extra params cannot override it.
-        if (getMachine().getEnableKVM() != 0) {
+        // ARM64 Fixed is designed for unrooted Android. Never request KVM
+        // for this guest, even if an older saved profile enabled it.
+        if (LimboApplication.arch != Config.Arch.arm64
+                && Config.enableKVM && getMachine().getEnableKVM() != 0) {
             paramsList.add("-enable-kvm");
         } else {
             paramsList.add("-accel");
