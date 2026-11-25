@@ -369,6 +369,10 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
                 renderer.toggleFullscreen();
                 drawerLayout.closeDrawers();
                 break;
+            case R.id.menu_item_force_game_fullscreen:
+                renderer.setForceWindowsFullscreen(!renderer.isForceWindowsFullscreen());
+                drawerLayout.closeDrawers();
+                break;
             case R.id.menu_item_task_manager:
                 (new TaskManagerDialog(this)).show();
                 drawerLayout.closeDrawers();
@@ -582,7 +586,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         renderer.setCursorVisible(false);
         renderer.setCursorColor(preferences.getInt("cursor_color", 0xffffff));
         renderer.setCursorScale(preferences.getFloat("cursor_scale", 1.0f));
-        renderer.setForceWindowsFullscreen(shortcut != null && shortcut.getExtra("forceFullscreen", "0").equals("1"));
+        renderer.setForceWindowsFullscreen(shortcut != null && shortcut.getExtra("forceFullscreen", "1").equals("1"));
 
         xServer.setRenderer(renderer);
         rootView.addView(xServerView);

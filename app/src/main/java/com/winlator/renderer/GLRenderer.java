@@ -50,7 +50,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
     public final ViewTransformation viewTransformation = new ViewTransformation();
     private final Drawable rootCursorDrawable;
     private final ArrayList<RenderableWindow> renderableWindows = new ArrayList<>();
-    private boolean forceWindowsFullscreen;
+    private volatile boolean forceWindowsFullscreen;
     private boolean fullscreen = false;
     private boolean toggleFullscreen = false;
     protected boolean viewportNeedsUpdate = true;
@@ -302,7 +302,7 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
                 short height = window.getHeight();
                 FullscreenTransformation fullscreenTransformation = null;
 
-                boolean inBounds = width >= ScreenInfo.MIN_WIDTH && height >= ScreenInfo.MIN_HEIGHT && width < xServer.screenInfo.width && height < xServer.screenInfo.height;
+                boolean inBounds = width >= ScreenInfo.MIN_WIDTH && height >= ScreenInfo.MIN_HEIGHT && width <= xServer.screenInfo.width && height <= xServer.screenInfo.height && (width < xServer.screenInfo.width || height < xServer.screenInfo.height);
                 if (window.getType() == Window.Type.NORMAL && inBounds && window.hasNoDecorations()) {
                     fullscreenTransformation = window.getFullscreenTransformation();
                     if (fullscreenTransformation == null) window.setFullscreenTransformation(fullscreenTransformation = new FullscreenTransformation(window));
@@ -321,7 +321,10 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
                 renderableWindows.add(new RenderableWindow(window.getContent(), x, y, transparent, fullscreenTransformation));
             }
-            else renderableWindows.add(new RenderableWindow(window.getContent(), x, y, transparent, null));
+            else {
+                window.setFullscreenTransformation(null);
+                renderableWindows.add(new RenderableWindow(window.getContent(), x, y, transparent, null));
+            }
         }
 
         if (window.attributes.isRenderSubwindows()) {
@@ -391,6 +394,8 @@ public class GLRenderer implements GLSurfaceView.Renderer, WindowManager.OnWindo
 
     public void setForceWindowsFullscreen(boolean forceWindowsFullscreen) {
         this.forceWindowsFullscreen = forceWindowsFullscreen;
+        xServerView.queueEvent(this::updateScene);
+        xServerView.requestRender();
     }
 
     public boolean isFullscreen() {

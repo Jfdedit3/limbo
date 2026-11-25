@@ -357,4 +357,5 @@
     <string name="fgs_notification_content_else">Winlator is running in the background</string>
     <string name="save_mem_on_run_from_steam">Save memory on run from Steam</string>
     <string name="present_mode">Present Mode</string>
+    <string name="force_game_fullscreen_live">Force game fullscreen (on/off)</string>
 </resources>

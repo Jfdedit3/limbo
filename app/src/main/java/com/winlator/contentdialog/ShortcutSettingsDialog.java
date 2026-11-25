@@ -80,7 +80,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
         vAudioDriverConfig.setOnClickListener((v) -> (new AudioDriverConfigDialog(v)).show());
 
         final CheckBox cbForceFullscreen = findViewById(R.id.CBForceFullscreen);
-        cbForceFullscreen.setChecked(shortcut.getExtra("forceFullscreen", "0").equals("1"));
+        cbForceFullscreen.setChecked(shortcut.getExtra("forceFullscreen", "1").equals("1"));
 
         final Spinner sBox64Preset = findViewById(R.id.SBox64Preset);
         Box64PresetManager.loadSpinner(sBox64Preset, shortcut.getExtra("box64Preset", shortcut.container.getBox64Preset()));
@@ -148,7 +148,7 @@ public class ShortcutSettingsDialog extends ContentDialog {
             shortcut.putExtra("graphicsDriverConfig", !graphicsDriverConfig.equals(shortcut.container.getGraphicsDriverConfig()) ? graphicsDriverConfig : null);
             shortcut.putExtra("audioDriver", !audioDriver.equals(shortcut.container.getAudioDriver())? audioDriver : null);
             shortcut.putExtra("audioDriverConfig", !audioDriverConfig.equals(shortcut.container.getAudioDriverConfig()) ? audioDriverConfig : null);
-            shortcut.putExtra("forceFullscreen", cbForceFullscreen.isChecked() ? "1" : null);
+            shortcut.putExtra("forceFullscreen", cbForceFullscreen.isChecked() ? "1" : "0");
 
             String wincomponents = ContainerDetailFragment.getWinComponents(getContentView());
             shortcut.putExtra("wincomponents", !wincomponents.equals(shortcut.container.getWinComponents()) ? wincomponents : null);
