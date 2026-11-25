@@ -1,63 +1,82 @@
-name: Build Limbo ARM Fixed
+name: Xclipse Gaming - Winlator
 on:
   push:
     branches: [master]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
+concurrency:
+  group: xclipse-gaming-master
+  cancel-in-progress: false
 jobs:
-  apk:
+  build:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '11'
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '6.5.1'
-      - name: Restore matching upstream QEMU libraries and ROM assets
+      - name: Import pinned Winlator source and apply Xclipse gaming defaults
         shell: bash
         run: |
           set -euxo pipefail
-          curl -fL --retry 3 https://github.com/limboemu/limbo/releases/download/v6.0.1-LimboEmulator/limbo-android-arm-6.0.1-qemu-5.1.0.apk -o /tmp/limbo.apk
-          unzip -q /tmp/limbo.apk 'lib/arm64-v8a/*' 'assets/roms/*' -d /tmp/limbo-upstream
-          mkdir -p limbo-android-arm/src/main/jniLibs limbo-android-arm/src/main/assets/roms
-          cp -a /tmp/limbo-upstream/lib/arm64-v8a limbo-android-arm/src/main/jniLibs/
-          cp -a /tmp/limbo-upstream/assets/roms/. limbo-android-arm/src/main/assets/roms/
-          test -s limbo-android-arm/src/main/jniLibs/arm64-v8a/libqemu-system-aarch64.so
-          curl -fL --retry 3 https://raw.githubusercontent.com/qemu/qemu/v5.1.0/pc-bios/edk2-aarch64-code.fd.bz2 -o /tmp/edk2.fd.bz2
-          bzip2 -dc /tmp/edk2.fd.bz2 > limbo-android-arm/src/main/assets/roms/edk2-aarch64-code.fd
-          curl -fL --retry 3 https://raw.githubusercontent.com/qemu/qemu/v5.1.0/pc-bios/edk2-licenses.txt -o limbo-android-arm/src/main/assets/roms/edk2-licenses.txt
+          if [ ! -f app/src/main/java/com/winlator/container/Container.java ]; then
+            git fetch --depth=1 https://github.com/brunodev85/winlator-app.git a030f552f452158a2db64fdb32b490fa19c0b48d
+            git read-tree --reset -u FETCH_HEAD
+            git checkout HEAD -- .github/workflows/build-arm.yml
+            python3 - <<'PY'
+          from pathlib import Path
+          def patch(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise RuntimeError("Missing expected upstream code: " + path + " / " + old)
+              p.write_text(s.replace(old, new, 1))
+          base = "app/src/main/java/com/winlator/"
+          patch(base+"container/Container.java", 'DEFAULT_SCREEN_SIZE = "1280x720"', 'DEFAULT_SCREEN_SIZE = "960x544"')
+          patch(base+"container/Container.java", ' WINEESYNC=1 TU_DEBUG=noconform', ' WINEESYNC=1')
+          patch(base+"container/Container.java", 'FrameRating.Mode.DISABLED.ordinal()', 'FrameRating.Mode.SIMPLE.ordinal()')
+          patch(base+"ContainerDetailFragment.java", 'FrameRating.Mode.DISABLED.ordinal()', 'FrameRating.Mode.SIMPLE.ordinal()')
+          patch(base+"box64/Box64Preset.java", 'DEFAULT = PERFORMANCE', 'DEFAULT = INTERMEDIATE')
+          patch(base+"container/GraphicsDrivers.java", 'DEFAULT_OPENGL_DRIVER = GLADIO', 'DEFAULT_OPENGL_DRIVER = VIRGL')
+          patch(base+"container/GraphicsDrivers.java", 'return GPUHelper.getAdrenoModelId(context) > 0 ? GraphicsDrivers.TURNIP+","+GraphicsDrivers.DEFAULT_OPENGL_DRIVER : GraphicsDrivers.VORTEK+","+GraphicsDrivers.DEFAULT_OPENGL_DRIVER;', 'return GraphicsDrivers.VORTEK+","+GraphicsDrivers.DEFAULT_OPENGL_DRIVER;')
+          patch(base+"container/GraphicsDriverPicker.java", 'taggedSelectionBox.setItems(GraphicsDrivers.getItems(apiNames[i]));', 'taggedSelectionBox.setItems(i == 0 ? new String[]{GraphicsDrivers.getName(GraphicsDrivers.VORTEK)} : GraphicsDrivers.getItems(apiNames[i]));')
+          patch(base+"container/GraphicsDriverPicker.java", 'taggedSelectionBox.setSelectedItem(GraphicsDrivers.getName(identifiers[i]));', 'taggedSelectionBox.setSelectedItem(GraphicsDrivers.getName(i == 0 ? GraphicsDrivers.VORTEK : identifiers[i]));')
+          patch("app/src/main/res/values/strings.xml", '<string name="app_name">Winlator</string>', '<string name="app_name">Xclipse Gaming</string>')
+          patch("app/build.gradle", 'versionName "11.2"', 'versionName "11.2-xclipse.1"')
+          patch("app/build.gradle", 'versionCode 33', 'versionCode 34')
+          p=Path("README.md")
+          p.write_text("# Xclipse Gaming\n\nUnofficial Winlator 11.2 source-based edition for Samsung Exynos / Xclipse.\n\nDefault: Vortek using the Android system Vulkan driver, VirGL OpenGL fallback, DXVK, 960x544, Box64 Intermediate, FPS HUD. Gladio and WineD3D remain available. No root. No performance guarantee; test on device. Turnip is not offered in the Vulkan picker in this edition.\n\nUpstream source: https://github.com/brunodev85/winlator-app/tree/a030f552f452158a2db64fdb32b490fa19c0b48d . Upstream license and credits retained. This is not a Samsung or official Winlator release. The upstream Android package name is retained because the runtime uses hardcoded paths. A different APK signature may require removing an existing Winlator installation after backing up containers.\n\n"+p.read_text())
+          PY
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git commit -m "Replace Limbo with Winlator Xclipse Gaming source and defaults"
+            git push origin HEAD:master
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android SDK packages
+      - name: Install Android build tools
         shell: bash
         run: |
           set -euo pipefail
           SDK="$RUNNER_TEMP/android-sdk"
           mkdir -p "$SDK/cmdline-tools"
-          curl -fL --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/android-tools.zip
-          unzip -q /tmp/android-tools.zip -d "$SDK/cmdline-tools"
+          curl -fL --retry 3 https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/xclipse-android-tools.zip
+          unzip -q /tmp/xclipse-android-tools.zip -d "$SDK/cmdline-tools"
           mv "$SDK/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
           MANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
           (yes || true) | "$MANAGER" --sdk_root="$SDK" --licenses
-          "$MANAGER" --sdk_root="$SDK" "platforms;android-29" "build-tools;29.0.3" "platform-tools"
+          "$MANAGER" --sdk_root="$SDK" "platforms;android-35" "build-tools;34.0.0" "platform-tools" "ndk;24.0.8215888" "cmake;3.22.1"
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
           printf 'sdk.dir=%s\n' "$SDK" > local.properties
-      - uses: actions/setup-java@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          distribution: temurin
-          java-version: '11'
-      - name: Build debug APK
-        run: gradle :limbo-android-arm:assembleDebug --no-daemon --stacktrace
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+          gradle-version: '8.6'
+      - name: Compile Xclipse Gaming
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+      - uses: actions/upload-artifact@v4
         with:
-          name: Limbo-ARM-Fixed
-          path: limbo-android-arm/build/outputs/apk/debug/*.apk
+          name: Xclipse-Gaming-APK
+          path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
