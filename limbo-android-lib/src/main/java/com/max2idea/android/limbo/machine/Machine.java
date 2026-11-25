@@ -624,7 +624,12 @@ public class Machine extends Observable {
             machineType = "pc";
             networkCard = "Default";
             disableTSC = 1;
-        } else if (LimboApplication.arch == Config.Arch.arm || LimboApplication.arch == Config.Arch.arm64) {
+        } else if (LimboApplication.arch == Config.Arch.arm64) {
+            arch = "ARM";
+            machineType = "virt";
+            cpu = "cortex-a72";
+            networkCard = "Default";
+        } else if (LimboApplication.arch == Config.Arch.arm) {
             arch = "ARM";
             machineType = "versatilepb";
             cpu = "Default";
