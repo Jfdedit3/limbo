@@ -42,6 +42,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -160,6 +163,9 @@ private String getQemuLibrary() {
         paramsList.add(getQemuLibrary());
         addUIOptions(context, paramsList);
         addCpuBoardOptions(paramsList);
+        if (isArm64Virt()) {
+            addArm64VirtPlatform(context, paramsList);
+        }
         addDrives(paramsList);
         addRemovableDrives(paramsList);
         addBootOptions(paramsList);
@@ -302,13 +308,59 @@ private String getQemuLibrary() {
             paramsList.add("-nodefaults");
     }
 
+    // ARM64 virt has PCIe and no legacy IDE controller.
+    private boolean isArm64Virt() {
+        String type = getMachineType();
+        return LimboApplication.arch == Config.Arch.arm64 && type != null
+                && (type.equals("virt") || type.startsWith("virt-"));
+    }
+
+    private void addArm64VirtPlatform(Context context, ArrayList<String> paramsList) throws IOException {
+        // Keep direct Linux kernel boot available; disk/ISO boot needs AArch64 UEFI.
+        String kernel = getKernel();
+        if (kernel == null || kernel.isEmpty()) {
+            File firmware = new File(LimboApplication.getBasefileDir(), "edk2-aarch64-code.fd");
+            if (!firmware.isFile() || firmware.length() == 0) {
+                File imported = new File(LimboApplication.getBasefileDir(), "QEMU_EFI.fd");
+                if (imported.isFile() && imported.length() > 0) {
+                    firmware = imported;
+                } else {
+                    File temp = new File(firmware.getParentFile(), firmware.getName() + ".tmp");
+                    if (!firmware.getParentFile().isDirectory() && !firmware.getParentFile().mkdirs())
+                        throw new IOException("Cannot create ARM64 firmware directory");
+                    try (InputStream in = context.getAssets().open("roms/edk2-aarch64-code.fd");
+                         FileOutputStream out = new FileOutputStream(temp)) {
+                        byte[] buffer = new byte[65536];
+                        int count;
+                        while ((count = in.read(buffer)) != -1) out.write(buffer, 0, count);
+                    } catch (IOException ex) {
+                        temp.delete();
+                        throw new IOException("ARM64 UEFI missing: install the firmware-enabled APK or import QEMU_EFI.fd", ex);
+                    }
+                    if (!temp.renameTo(firmware)) {
+                        temp.delete();
+                        throw new IOException("Cannot install ARM64 UEFI");
+                    }
+                }
+            }
+            paramsList.add("-bios");
+            paramsList.add(firmware.getAbsolutePath());
+        }
+        paramsList.add("-device");
+        paramsList.add("qemu-xhci,id=armusb");
+        paramsList.add("-device");
+        paramsList.add("usb-kbd,bus=armusb.0");
+        paramsList.add("-device");
+        paramsList.add("usb-tablet,bus=armusb.0");
+    }
+
     private void addCpuBoardOptions(ArrayList<String> paramsList) {
 
         //XXX: SMP is not working correctly for some guest OSes
         //so we enable multi core only under KVM
         // anyway regular emulation is not gaining any benefit unless mttcg is enabled but that
         // doesn't work for x86 guests yet
-        if (getMachine().getCpuNum() > 1) {
+        if (getMachine().getCpuNum() > 1 && !"versatilepb".equals(getMachineType())) {
             paramsList.add("-smp");
             paramsList.add(getMachine().getCpuNum() + "");
         }
@@ -320,6 +372,7 @@ private String getQemuLibrary() {
         //FIXME: something is wrong with quoting that doesn't let sparc qemu find the cpu def
         // for now we remove the cpu drop downlist items for sparc
         String cpu = getMachine().getCpu();
+        if (isArm64Virt() && (cpu == null || cpu.equals("Default"))) cpu = "cortex-a72";
         if (getMachine().getCpu() != null && getMachine().getCpu().contains(" "))
             cpu = "'" + getMachine().getCpu() + "'"; // XXX: needed for sparc cpu names
 
@@ -463,6 +516,15 @@ private String getQemuLibrary() {
     }
 
     private void addGraphicsOptions(ArrayList<String> paramsList) {
+        if (isArm64Virt()) {
+            if ("nographic".equals(getMachine().getVga())) {
+                paramsList.add("-nographic");
+            } else {
+                paramsList.add("-device");
+                paramsList.add("ramfb");
+            }
+            return;
+        }
         if (getMachine().getVga() != null) {
             if (getMachine().getVga().equals("Default")) {
                 //do nothing
@@ -547,6 +609,14 @@ private String getQemuLibrary() {
 
     public void addHardDisk(ArrayList<String> paramsList, String imagePath, int index, String hdInterface) {
         if (imagePath != null && !imagePath.trim().equals("")) {
+            if (isArm64Virt()) {
+                String id = "armdisk" + index;
+                paramsList.add("-drive");
+                paramsList.add("if=none,id=" + id + ",file=" + imagePath);
+                paramsList.add("-device");
+                paramsList.add("nvme,drive=" + id + ",serial=LIMBO" + index);
+                return;
+            }
             if (Config.legacyDrives) {
                 switch (index) {
                     case 0:
@@ -581,7 +651,7 @@ private String getQemuLibrary() {
     }
 
     public void addSharedFolder(ArrayList<String> paramsList, String sharedFolderPath) {
-        if (Config.enableSharedFolder && sharedFolderPath != null) {
+        if (Config.enableSharedFolder && sharedFolderPath != null && !isArm64Virt()) {
             //XXX; We use hdd to mount any virtual fat drives
             paramsList.add("-drive"); //empty
             String driveParams = "index=3";
@@ -599,7 +669,12 @@ private String getQemuLibrary() {
     public void addRemovableDrives(ArrayList<String> paramsList) {
         String cdImagePath = getDriveFilePath(getMachine().getCdImagePath());
         if (cdImagePath != null) {
-            if (Config.legacyDrives) {
+            if (isArm64Virt()) {
+                paramsList.add("-drive");
+                paramsList.add("if=none,id=armcd,format=raw,media=cdrom,readonly=on,file=" + cdImagePath);
+                paramsList.add("-device");
+                paramsList.add("usb-storage,bus=armusb.0,drive=armcd,id=armcddev");
+            } else if (Config.legacyDrives) {
                 paramsList.add("-cdrom");
                 paramsList.add(cdImagePath);
             } else {
@@ -616,7 +691,7 @@ private String getQemuLibrary() {
         }
 
         String fdaImagePath = getDriveFilePath(getMachine().getFdaImagePath());
-        if (Config.enableEmulatedFloppy && fdaImagePath != null) {
+        if (!isArm64Virt() && Config.enableEmulatedFloppy && fdaImagePath != null) {
             if (Config.legacyDrives) {
                 paramsList.add("-fda");
                 paramsList.add(fdaImagePath);
@@ -631,7 +706,7 @@ private String getQemuLibrary() {
         }
 
         String fdbImagePath = getDriveFilePath(getMachine().getFdbImagePath());
-        if (Config.enableEmulatedFloppy && fdbImagePath != null) {
+        if (!isArm64Virt() && Config.enableEmulatedFloppy && fdbImagePath != null) {
             if (Config.legacyDrives) {
                 paramsList.add("-fdb");
                 paramsList.add(fdbImagePath);
@@ -646,7 +721,7 @@ private String getQemuLibrary() {
         }
 
         String sdImagePath = getDriveFilePath(getMachine().getSdImagePath());
-        if (Config.enableEmulatedSDCard && sdImagePath != null) {
+        if (!isArm64Virt() && Config.enableEmulatedSDCard && sdImagePath != null) {
             if (Config.legacyDrives) {
                 paramsList.add("-sd");
                 paramsList.add(sdImagePath);
@@ -811,7 +886,7 @@ private String getQemuLibrary() {
     public String getDeviceName(MachineProperty driveProperty) {
         switch (driveProperty) {
             case CDROM:
-                return cdDeviceName;
+                return isArm64Virt() ? "armcd" : cdDeviceName;
             case FDA:
                 return fdaDeviceName;
             case FDB:
